@@ -1,0 +1,9 @@
+Segments must be an ordered list of 2 dimensional points proceeding counterclockwise around the boundary.
+
+It is assumed that the last point connects to the first.
+
+No error checking is done on the geometry.
+
+Ensure particle interaction range does not extend further than one neighbor in the cell array.
+
+Geometry Must be inside simulation region.

@@ -1,0 +1,23 @@
+# General Variables
+#
+Dimension		2
+Particles		200
+_Diameter		1
+_Epsilon_		10
+_End Time		10
+_Delta T_		0.0001
+_Num_Thrd		4
+#
+# Region Parameters (Bottom left corner at (0,0,0)
+#
+_Region_X		70
+_Region_Y		70
+_Region_Z		70
+___Divs_X		28
+___Divs_Y		28
+___Divs_Z		28
+#
+# Box Parameters
+#
+_Box_Mass		200
+Box_Moves		true
