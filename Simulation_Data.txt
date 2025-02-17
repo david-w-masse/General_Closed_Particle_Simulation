@@ -6,7 +6,7 @@ _Diameter		1
 _Epsilon_		10
 _End Time		10
 _Delta T_		0.0001
-_Num_Thrd		4
+_Num_Thrd		1
 #
 # Region Parameters (Bottom left corner at (0,0,0)
 #

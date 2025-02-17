@@ -8,6 +8,12 @@
 #include <stdexcept>
 #include <iostream>
 #include <string>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <vector>
+#include <sstream>
 
 #include "General_Closed_Particle_Simulation.h"
 
@@ -38,6 +44,12 @@ extern double Sigma_Test_WCA_Colloid_Particle;
 extern double Sigma_Test_LJ;
 extern double Epsilon_WCA_x_24;
 extern double Delta_t_square;
+extern double Half_Delta_t_square;
+extern double Half_Delta_t_square_div_Box_Mass;
+extern double Half_Delta_t;
+extern double Half_Delta_t_div_Box_Mass;
+extern double Half_Delta_t_square_div_Inertia_Z;
+extern double Half_Delta_t_div_Inertia_Z;
 
 extern int Neighbor_Count;
 
@@ -224,6 +236,10 @@ bool Load_Simulation_Variables()
 
 	// set up basic parameters and precalculate reused values based on loaded data
 	Delta_t_square = Delta_t * Delta_t;
+	Half_Delta_t_square = 0.5 * Delta_t_square;
+	Half_Delta_t_square_div_Box_Mass = 0.5 * Delta_t_square / Box.Mass;
+	Half_Delta_t = 0.5 * Delta_t;
+	Half_Delta_t_div_Box_Mass = 0.5 * Delta_t / Box.Mass;
 
 	Sigma_Square = Particle_Diameter * Particle_Diameter;
 	Sigma_Test_WCA = pow(2.0, (2 / 6.0)) * Sigma_Square;
@@ -430,6 +446,9 @@ bool Load_Geometry_Data_2D()
 	}
 
 	cout << Box.Inertia_Z << endl;
+
+	Half_Delta_t_square_div_Inertia_Z = 0.5 * Delta_t / Box.Inertia_Z;
+	Half_Delta_t_div_Inertia_Z = 0.5 * Delta_t_square / Box.Inertia_Z;
 
 	return true;
 }
@@ -981,7 +1000,16 @@ void Build_Neighbor_List()
 
 void Build_Memory()
 {
-	Particles = new Particle_Structure[Number_Particles];
+	// always allocate a multiple of 4 particles for use of AVX
+	if ((Number_Particles % 4) == 0)
+	{
+		Particles = new Particle_Structure[Number_Particles];
+	}
+	else
+	{
+		Particles = new Particle_Structure[Number_Particles + 4 - (Number_Particles % 4)];
+	}
+
 
 	double Cell_Volume;
 	double Particle_Volume;

@@ -51,7 +51,7 @@ struct Segment_Structure
 	double Normal_Y;
 };
 
-struct Particle_Structure
+struct alignas(8) Particle_Structure
 {
 	double Position_X;
 	double Position_Y;
@@ -114,7 +114,7 @@ struct Triangle_Structure
 
 };
 
-struct Box_Structure
+struct alignas(8) Box_Structure
 {
 	double Center_X;
 	double Center_Y;

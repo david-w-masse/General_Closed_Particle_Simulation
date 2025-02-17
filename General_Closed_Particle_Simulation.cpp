@@ -52,6 +52,12 @@ double Sigma_Test_WCA;
 double Sigma_Test_LJ;
 double Epsilon_WCA_x_24;
 double Delta_t_square;
+double Half_Delta_t_square;
+double Half_Delta_t_square_div_Box_Mass;
+double Half_Delta_t;
+double Half_Delta_t_div_Box_Mass;
+double Half_Delta_t_square_div_Inertia_Z;
+double Half_Delta_t_div_Inertia_Z;
 
 double Current_Time;
 
@@ -292,6 +298,25 @@ int main(int argc, char* argv[])
 
 	auto start = std::chrono::system_clock::now();
 
+	__m256d vec_delta_t = _mm256_set_pd(Delta_t, Delta_t, Delta_t, Delta_t);
+
+	__m256d vec_half_delta_t = _mm256_set_pd(Half_Delta_t, Half_Delta_t, Half_Delta_t, Half_Delta_t);
+
+	__m256d vec_half_delta_t_square = _mm256_set_pd(Half_Delta_t_square, Half_Delta_t_square, Half_Delta_t_square, Half_Delta_t_square);
+
+	__m256d vec_mul_forces = _mm256_set_pd(0, 0, 0, 0);
+
+	__m256d vec_mul_forces_p = _mm256_set_pd(0, 0, 0, 0);
+
+	__m256d vec_mul_vel = _mm256_set_pd(0, 0, 0, 0);
+
+	__m256d vec_mul_step_1 = _mm256_mul_pd(vec_mul_vel, vec_delta_t);
+
+	__m256d vec_mul_step_2 = _mm256_fmadd_pd(vec_mul_forces, vec_half_delta_t_square, vec_mul_step_1);
+
+	double* vec_s_1 = (double*)&vec_mul_step_2;
+
+
 	if (Single_Thread)
 	{
 		if (Dimension == 2)
@@ -303,11 +328,12 @@ int main(int argc, char* argv[])
 
 			while (Current_Time < End_Time)
 			{
+
 				for (int i = 0; i < Number_Particles; i++)
 				{
 					// normal			
-					Particles[i].Position_X += Particles[i].Velocity_X * Delta_t + 0.5 * Particles[i].Force_X * Delta_t_square;
-					Particles[i].Position_Y += Particles[i].Velocity_Y * Delta_t + 0.5 * Particles[i].Force_Y * Delta_t_square;
+					Particles[i].Position_X += Particles[i].Velocity_X * Delta_t + Particles[i].Force_X * Half_Delta_t_square;
+					Particles[i].Position_Y += Particles[i].Velocity_Y * Delta_t + Particles[i].Force_Y * Half_Delta_t_square;
 
 					// Debug_Info(0, i);
 
@@ -317,12 +343,52 @@ int main(int argc, char* argv[])
 					Particles[i].Force_X = 0;
 					Particles[i].Force_Y = 0;
 				}
+				
+				/*
+				for (int i = 0; i < Number_Particles; i+=4)
+				{
+					// AVX
+					
+					vec_mul_forces = _mm256_set_pd(Particles[i].Force_X, Particles[i + 1].Force_X, Particles[i + 2].Force_X, Particles[i + 3].Force_X);
 
+					vec_mul_vel = _mm256_set_pd(Particles[i].Velocity_X, Particles[i + 1].Velocity_X, Particles[i + 2].Velocity_X, Particles[i + 3].Velocity_X);
+
+					vec_mul_step_1 = _mm256_mul_pd(vec_mul_vel, vec_delta_t);
+
+					vec_mul_step_2 = _mm256_fmadd_pd(vec_mul_forces, vec_half_delta_t_square, vec_mul_step_1);
+
+					vec_s_1 = (double*)&vec_mul_step_2;
+
+					for (int j = 0; j < 4; j++)
+					{
+						Particles[i + j].Position_X += vec_s_1[3-j];
+						Particles[i + j].Past_Force_X = Particles[i + j].Force_X;
+						Particles[i + j].Force_X = 0;
+					}
+
+					vec_mul_forces = _mm256_set_pd(Particles[i].Force_Y, Particles[i + 1].Force_Y, Particles[i + 2].Force_Y, Particles[i + 3].Force_Y);
+
+					vec_mul_vel = _mm256_set_pd(Particles[i].Velocity_Y, Particles[i + 1].Velocity_Y, Particles[i + 2].Velocity_Y, Particles[i + 3].Velocity_Y);
+
+					vec_mul_step_1 = _mm256_mul_pd(vec_mul_vel, vec_delta_t);
+
+					vec_mul_step_2 = _mm256_fmadd_pd(vec_mul_forces, vec_half_delta_t_square, vec_mul_step_1);
+
+					vec_s_1 = (double*)&vec_mul_step_2;
+
+					for (int j = 0; j < 4; j++)
+					{
+						Particles[i + j].Position_Y += vec_s_1[3-j];
+						Particles[i + j].Past_Force_Y = Particles[i + j].Force_Y;
+						Particles[i + j].Force_Y = 0;
+					}
+				}
+				*/
 				// update box variables
-				Box.Center_X += Box.Velocity_X * Delta_t + 0.5 * Box.Force_X / Box.Mass * Delta_t_square;
-				Box.Center_Y += Box.Velocity_Y * Delta_t + 0.5 * Box.Force_Y / Box.Mass * Delta_t_square;
+				Box.Center_X += Box.Velocity_X * Delta_t + Box.Force_X * Half_Delta_t_square_div_Box_Mass;
+				Box.Center_Y += Box.Velocity_Y * Delta_t + Box.Force_Y * Half_Delta_t_square_div_Box_Mass;
 
-				Box.Angle_Z += Box.Angular_Velocity_Z * Delta_t + 0.5 * Box.Torque_Z / Box.Inertia_Z * Delta_t_square;
+				Box.Angle_Z += Box.Angular_Velocity_Z * Delta_t + Box.Torque_Z * Half_Delta_t_square_div_Inertia_Z;
 
 				Box.Cos_Angle_Z = cos(Box.Angle_Z);
 				Box.Sin_Angle_Z = sin(Box.Angle_Z);
@@ -340,17 +406,57 @@ int main(int argc, char* argv[])
 				Build_Cell_List_2D();
 
 				Calculate_Forces_2D();
-
+				
 				for (int i = 0; i < Number_Particles; i++)
 				{
-					Particles[i].Velocity_X += 0.5 * (Particles[i].Force_X + Particles[i].Past_Force_X) * Delta_t;
-					Particles[i].Velocity_Y += 0.5 * (Particles[i].Force_Y + Particles[i].Past_Force_Y) * Delta_t;
+					Particles[i].Velocity_X += (Particles[i].Force_X + Particles[i].Past_Force_X) * Half_Delta_t;
+					Particles[i].Velocity_Y += (Particles[i].Force_Y + Particles[i].Past_Force_Y) * Half_Delta_t;
 				}
+				
+				/*
+				for (int i = 0; i < Number_Particles; i += 4)
+				{
+					// AVX
+					vec_mul_forces = _mm256_set_pd(Particles[i].Force_X, Particles[i + 1].Force_X, Particles[i + 2].Force_X, Particles[i + 3].Force_X);
 
-				Box.Velocity_X += 0.5 * (Box.Force_X + Box.Past_Force_X) * Delta_t / Box.Mass;
-				Box.Velocity_Y += 0.5 * (Box.Force_Y + Box.Past_Force_Y) * Delta_t / Box.Mass;
+					vec_mul_forces_p = _mm256_set_pd(Particles[i].Past_Force_X, Particles[i + 1].Past_Force_X, Particles[i + 2].Past_Force_X, Particles[i + 3].Past_Force_X);
 
-				Box.Angular_Velocity_Z += 0.5 * (Box.Torque_Z + Box.Past_Torque_Z) * Delta_t / Box.Inertia_Z;
+					vec_mul_vel = _mm256_set_pd(Particles[i].Velocity_X, Particles[i + 1].Velocity_X, Particles[i + 2].Velocity_X, Particles[i + 3].Velocity_X);
+
+					vec_mul_step_1 = _mm256_add_pd(vec_mul_forces, vec_mul_forces_p);
+
+					vec_mul_step_2 = _mm256_mul_pd(vec_mul_step_1, vec_half_delta_t);
+
+					vec_s_1 = (double*)&vec_mul_step_2;
+
+					for (int j = 0; j < 4; j++)
+					{
+						Particles[i + j].Velocity_X += vec_s_1[3 - j];
+					}
+
+					vec_mul_forces = _mm256_set_pd(Particles[i].Force_Y, Particles[i + 1].Force_Y, Particles[i + 2].Force_Y, Particles[i + 3].Force_Y);
+
+					vec_mul_forces_p = _mm256_set_pd(Particles[i].Past_Force_Y, Particles[i + 1].Past_Force_Y, Particles[i + 2].Past_Force_Y, Particles[i + 3].Past_Force_Y);
+
+					vec_mul_vel = _mm256_set_pd(Particles[i].Velocity_Y, Particles[i + 1].Velocity_Y, Particles[i + 2].Velocity_Y, Particles[i + 3].Velocity_Y);
+
+					vec_mul_step_1 = _mm256_add_pd(vec_mul_forces, vec_mul_forces_p);
+
+					vec_mul_step_2 = _mm256_mul_pd(vec_mul_step_1, vec_half_delta_t);
+
+					vec_s_1 = (double*)&vec_mul_step_2;
+
+					for (int j = 0; j < 4; j++)
+					{
+						Particles[i + j].Velocity_Y += vec_s_1[3 - j];
+					}
+				}
+				*/
+
+				Box.Velocity_X += (Box.Force_X + Box.Past_Force_X) * Half_Delta_t_div_Box_Mass;
+				Box.Velocity_Y += (Box.Force_Y + Box.Past_Force_Y) * Half_Delta_t_div_Box_Mass;
+
+				Box.Angular_Velocity_Z += (Box.Torque_Z + Box.Past_Torque_Z) * Half_Delta_t_div_Inertia_Z;
 
 				Current_Time += Delta_t;
 
@@ -379,7 +485,7 @@ int main(int argc, char* argv[])
 
 					if (Current_Time == check_time)
 					{
-						Box.Velocity_X += 0.5;
+						Box.Angular_Velocity_Z += 0.002;
 						cout << "inpulse" << endl;
 					}
 				}
@@ -525,8 +631,8 @@ int main(int argc, char* argv[])
 
 			for (int i = 0; i < Number_Particles; i++)
 			{
-				Particles[i].Position_X += Particles[i].Velocity_X * Delta_t + 0.5 * Particles[i].Force_X * Delta_t_square;
-				Particles[i].Position_Y += Particles[i].Velocity_Y * Delta_t + 0.5 * Particles[i].Force_Y * Delta_t_square;
+				Particles[i].Position_X += Particles[i].Velocity_X * Delta_t + Particles[i].Force_X * Half_Delta_t_square;
+				Particles[i].Position_Y += Particles[i].Velocity_Y * Delta_t + Particles[i].Force_Y * Half_Delta_t_square;
 
 				// Debug_Info(0, i);
 
@@ -538,10 +644,10 @@ int main(int argc, char* argv[])
 			}
 
 			// update box variables
-			Box.Center_X += Box.Velocity_X * Delta_t + 0.5 * Box.Force_X / Box.Mass * Delta_t_square;
-			Box.Center_Y += Box.Velocity_Y * Delta_t + 0.5 * Box.Force_Y / Box.Mass * Delta_t_square;
+			Box.Center_X += Box.Velocity_X * Delta_t + Box.Force_X * Half_Delta_t_square_div_Box_Mass;
+			Box.Center_Y += Box.Velocity_Y * Delta_t + Box.Force_Y * Half_Delta_t_square_div_Box_Mass;
 
-			Box.Angle_Z += Box.Angular_Velocity_Z * Delta_t + 0.5 * Box.Torque_Z / Box.Inertia_Z * Delta_t_square;
+			Box.Angle_Z += Box.Angular_Velocity_Z * Delta_t + Box.Torque_Z * Half_Delta_t_square_div_Inertia_Z;
 
 			Box.Cos_Angle_Z = cos(Box.Angle_Z);
 			Box.Sin_Angle_Z = sin(Box.Angle_Z);
@@ -573,10 +679,10 @@ int main(int argc, char* argv[])
 				//Debug_Info(0, 0);
 
 				// due to update order, write box data before position updates to avoid having to save past data
-				Box.Velocity_X += 0.5 * (Box.Force_X + Box.Past_Force_X) * Delta_t / Box.Mass;
-				Box.Velocity_Y += 0.5 * (Box.Force_Y + Box.Past_Force_Y) * Delta_t / Box.Mass;
+				Box.Velocity_X += (Box.Force_X + Box.Past_Force_X) * Half_Delta_t_div_Box_Mass;
+				Box.Velocity_Y += (Box.Force_Y + Box.Past_Force_Y) * Half_Delta_t_div_Box_Mass;
 
-				Box.Angular_Velocity_Z += 0.5 * (Box.Torque_Z + Box.Past_Torque_Z) * Delta_t / Box.Inertia_Z;
+				Box.Angular_Velocity_Z += (Box.Torque_Z + Box.Past_Torque_Z) * Half_Delta_t_div_Inertia_Z;
 
 				Current_Time += Delta_t;
 
@@ -604,10 +710,10 @@ int main(int argc, char* argv[])
 					*/
 				}
 
-				Box.Center_X += Box.Velocity_X * Delta_t + 0.5 * Box.Force_X / Box.Mass * Delta_t_square;
-				Box.Center_Y += Box.Velocity_Y * Delta_t + 0.5 * Box.Force_Y / Box.Mass * Delta_t_square;
+				Box.Center_X += Box.Velocity_X * Delta_t + Box.Force_X * Half_Delta_t_square_div_Box_Mass;
+				Box.Center_Y += Box.Velocity_Y * Delta_t + Box.Force_Y * Half_Delta_t_square_div_Box_Mass;
 
-				Box.Angle_Z += Box.Angular_Velocity_Z * Delta_t + 0.5 * Box.Torque_Z / Box.Inertia_Z * Delta_t_square;
+				Box.Angle_Z += Box.Angular_Velocity_Z * Delta_t + Box.Torque_Z * Half_Delta_t_square_div_Inertia_Z;
 
 				Box.Cos_Angle_Z = cos(Box.Angle_Z);
 				Box.Sin_Angle_Z = sin(Box.Angle_Z);
